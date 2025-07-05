@@ -1,185 +1,97 @@
+/**
+ * @file car_control.c
+ * @brief 智能车控制系统实现
+ * @details 包含车辆运动控制、避障控制、任务规划等功能
+ */
+
 #include "car_control.h"
 #include "motor_drive.h"
 #include "speed_encoder.h"
 #include "UltrasonicWave.h"
 #include "oled_i2c.h"
 #include "ctrl_menu.h"
-#define CHA +11
-int mission=0;
-int a=0;
-int b=0;
-__IO CarCtrl_State_TypeDef g_car_ctrl_state = CarCtrl_STOP ;
+
+/* ==================== 宏定义 ==================== */
+#define CHA         +11
+
+/* ==================== 全局变量定义 ==================== */
+int mission = 0;
+int a = 0;
+int b = 0;
+__IO CarCtrl_State_TypeDef g_car_ctrl_state = CarCtrl_STOP;
 
 avoid_ctrl_t g_avoid_ctrl = {0, 0, 0, -1, 0, {0, 0}};
 
-
-car_config_t g_CarConfig = 
-{
-	.speed_KP = 8,
-	.speed_KI = 0.1 ,
-	.speed_KD = 0
+car_config_t g_CarConfig = {
+    .speed_KP = 8,
+    .speed_KI = 0.1,
+    .speed_KD = 0
 };
-car_ctrl_t 	g_CarCtrl;
 
+car_ctrl_t g_CarCtrl;
 car_plan_t* g_CarPlan_Ptr;
 
-/*car_plan_t g_CarPlan_Base[] =
-{
-	{ 55  , { 0 , 0} , 0 , 100 } ,   		// test steer moto
-	{ -55  , { 0 , 0} , 0 , 100 } ,  		// test steer moto
-	
-	{ 16  , { 500 , 500} , 0 , 200 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ -55  , { 500 , 500} , 0 , 110 } ,		// turn right 1.1s 
-	
-	{ 16  , { 500 , 500} , 0 , 150 } ,		// run 1.5s with 500mm/s speed straightly
-	{ -55  , { 500 , 500} , 0 , 110 } ,   // turn right 1.1s 
-	
-	{ 16  , { 500 , 500} , 0 , 120 } ,		// run 1.2s with 500mm/s speed straightly
-	{ -55  , { 500 , 500} , 0 , 135 } ,		// turn right 1.35s 
-	
-	{ 16  , { 500 , 500} , 0 , 180 } ,		// run 1.8s with 500mm/s speed straightly
-	{ 16  , { 0   , 0  } , 0 , 0 } ,		// stop
-};
-*/
-//7du
-/*beifen 
-	{ CHA, { 2000, 2000} , 0 , 120 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {500 , 550} , 0 , 200 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 85 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {600 , 650} , 0 , 160 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-20, { 500, 500} , 0 , 0 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 } ,		// stop
-	*/
-	
-car_plan_t g_CarPlan_Base[] =
-{	/*
-	{ CHA, { 2000, 2000} , 0 , 110 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA+75,{520 , 1350} , 0 , 160 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 60} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {550 , 1350} , 0 , 90 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-25, { 2000, 2000} , 0 ,0 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 }		// stop
-	/*
-	{ CHA, { 2500, 2500} , 0 , 110 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA+75,{700 , 2000} , 0 , 80 } ,  	// run 2s with 500mm/s speed straightly 1m
-	//{ CHA, { 2500 , 2500} , 0 , 30 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {700 , 1500} , 0 , 85 } ,  	// run 2s with 500mm/s speed straightly 1m
-	//{ CHA-30, { 2500, 2500} , 0 ,5 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 } ,		// stop
-	*/
-	{ CHA-8, { 2000, 2000} , 0 , 120 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA+75,{480 , 1350} , 0 , 148  } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 90} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {480 , 1350} , 0 ,80     } ,  	// run 2s with 500mm/s speed straightly 1m
-	// { CHA+25, { 2000, 2000} , 0 , 10} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 }		// stop
-	//����һ��8.07V����CHA ��-11������Ĵ����Ƿ����
-	/*
-		{ CHA-10, { 2000, 2000} , 0 , 120 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA+75,{480 , 1350} , 0 , 150 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 80} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {550 , 1350} , 0 ,75     } ,  	// run 2s with 500mm/s speed straightly 1m
-	// { CHA+25, { 2000, 2000} , 0 , 10} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 }		// stop
-	*/
-	
-	//�����  8��154  
-	/*
-		{ CHA+10, { 2000, 2000} , 0 , 120 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA-75,{480 , 1350} , 0 , 150 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 85} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-75, {550 , 1350} , 0 , 75 } ,  	// run 2s with 500mm/s speed straightly 1m
-	//{ CHA+25, { 2000, 2000} , 0 , 10} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 }		// stop
-	*/
-};
-car_plan_t g_CarPlan_Supper[] =
-{
-	/*
-	{ 55  , { 0 , 0} , 0 , 100 } ,   		// test sreer moto
-	{ -55  , { 0 , 0} , 0 , 100 } ,  		// test sreer moto
-	
-	{ 17  , { 500 , 500} , 20000 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{ -55  , { 500 , 500} , 0 , 110 } ,		// turn right 1.1s 
-	
-	{ 17  , { 300 , 300} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
-	{ 17  , { 0 ,  0} , 0 , 100 } ,		// run 1s with 50mm/s speed straightly
-	{ 80  , { 200 , 400} , 0 , 150 } ,     // turn left 1.1s 
-	
-	{ 17  , { 100 , 100} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
-	{ 80  , { 200 , 400} , 0 , 150 } ,		// turn left 1.1s 
-	
-	{ 17  , { 100 , 100} , 0 , 30 } ,		// run 1s with 50mm/s speed straightly
-	{ 17  , { 0 ,  0} , 0 , 100 } ,		// run 1s with 50mm/s speed straightly
-	{ -55  , { 500 , 500} , 0 , 110 } ,		// turn right 1.1s 
-	
-	{ 17  , { 500 , 500} , 0 , 100 } ,		// run 1s with 50mm/s speed straightly
-	{ 17  , { 0   , 0  } , 0 , 0 } ,		// stop
-	*/
+/* ==================== 运行计划数组定义 ==================== */
 
-
-	/*�ռ��汾����ֹͣ��
-	{ CHA  , {1000 , 1000} , 40000 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{ CHA-75, {500 , 500} , 0 , 100 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {500 , 500} , 0 , 200 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-50, {250 , 250} , 0 , 100 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-50  , {500 , 500} , 0,70 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{ CHA  , {1000 , 1000} , 0 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	*/
-/*����2����1
-
-{ CHA  , {200 ,200} , 30000, 1000 } ,  	//0 run 20s with 50mm/s speed straightly or block less than 200mm
-	{ CHA, {-200 , -200} , 0 , 200 } ,  	//1run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {200 , 200} ,  35000 , 100 } ,  	//2 run 2s with 500mm/s speed straightly 1m
-	{ CHA, {250 , 250} ,  35000, 220 } ,  	// 3run 2s with 500mm/s speed straightly 1m
-	{ CHA-50 , {250 , 250} ,35000,65} ,//4
-	{ CHA, {250 , 250} ,35000,200 },
-  { CHA+15 , {250 , 250} ,35000,200 } ,
-  {CHA , { 0   , 0  } , 0 , 0 } ,	
-	*/
-	//����2����2
-	
-	{ CHA  , {400 ,400} , 40000, 1000 } ,  	//0 run 20s with 50mm/s speed straightly or block less than 200mm
-	  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {600 , -500} , 0 , 180} ,  	//1run 2s with 500mm/s speed straightly 1m   1  ת��
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {200 , 200} ,  30000 , 200 } ,  	//2 run 2s with 500mm/s speed straightly 1m 2ת�����
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {-500 , 600} ,  0, 140 } ,  	// 3run 2s with 500mm/s speed straightly 1m    3��ת���
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA  , {500 ,500} , 30000, 150 } ,                                              // 4 ��ȫֱִ��
-		  {CHA , { 0   , 0  } , 0 , 100 } ,	
-
-	{ CHA, {-500 , 600} ,  0, 140 } ,  	// 3run 2s with 500mm/s speed straightly 1m    3��ת���
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA  , {200 ,200} , 30000, 140 } ,                                               // 6 ��ת��ִ��
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {600 , -500} , 0 , 180} ,                                                  //7 ת��λ
-	  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-		{ CHA  , {200 ,200} , 30000, 200 } ,//       
-
-
-  {CHA , { 0   , 0  } , 0 , 0 } ,	
- 	//4 run 20s with 50mm/s speed straightly or block less than 200mm
-				// 5stop
-	  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	// { CHA-75, {550 , 500} , 0 , 200 } ,  	// run 2s with 500mm/s speed straightly 1m
-	// { CHA  , {500 , 500} ,  0 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	
-		// ��������ʹ��
-	//{ CHA   , { 500 , 500} , 0 , 10000 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-
+/**
+ * @brief 基础运行计划
+ * @note 用于基本的方形路径行驶
+ */
+car_plan_t g_CarPlan_Base[] = {
+    { CHA - 8,   { 2000, 2000 }, 0, 120 },     // 直行 1.2 秒
+    { CHA + 75,  { 480,  1350 }, 0, 148 },     // 右转
+    { CHA,       { 2000, 2000 }, 0, 90  },     // 直行 0.9 秒
+    { CHA + 75,  { 480,  1350 }, 0, 80  },     // 右转
+    { CHA,       { 0,    0    }, 0, 0   }      // 停止
 };
 
-car_plan_t g_CarPlan_AvoidDemo[] =
-{
+/**
+ * @brief 高级运行计划
+ * @note 包含避障和复杂路径的运行计划
+ */
+car_plan_t g_CarPlan_Supper[] = {
+    // 第一阶段：检测障碍物
+    { CHA,       { 400,  400  }, 40000, 1000 },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第二阶段：第一次转弯
+    { CHA,       { 600,  -500 }, 0,     180  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第三阶段：慢速前进
+    { CHA,       { 200,  200  }, 30000, 200  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第四阶段：左转
+    { CHA,       { -500, 600  }, 0,     140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第五阶段：直行
+    { CHA,       { 500,  500  }, 30000, 150  },
+    { CHA,       { 0,    0    }, 0,     100  },
+    
+    // 第六阶段：再次左转
+    { CHA,       { -500, 600  }, 0,     140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第七阶段：慢速前进
+    { CHA,       { 200,  200  }, 30000, 140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第八阶段：转弯复位
+    { CHA,       { 600,  -500 }, 0,     180  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 最后阶段：前进并停止
+    { CHA,       { 200,  200  }, 30000, 200  },
+    { CHA,       { 0,    0    }, 0,     0    }
+};
+
+/**
+ * @brief 避障演示计划
+ * @note 用于测试避障功能
+ */
+car_plan_t g_CarPlan_AvoidDemo[] = {
     { 0,    {300, 300}, 25000, 500},
     { 0,    {400, 400}, 25000, 500},
     { 20,   {300, 300}, 25000, 300},
@@ -187,11 +99,15 @@ car_plan_t g_CarPlan_AvoidDemo[] =
     { 0,    {0, 0},     0,     0},
 };
 
+/* ==================== 避障控制功能实现 ==================== */
 
-
+/**
+ * @brief 车辆避障控制函数
+ * @details 实现基于超声波传感器的避障功能
+ */
 void CarCtrl_AvoidObstacle(void)
 {
-    // ??????
+    // 避障状态定义
     #define AVOID_IDLE          0
     #define AVOID_DETECTED      1
     #define AVOID_BACKUP        2
@@ -201,37 +117,37 @@ void CarCtrl_AvoidObstacle(void)
     #define AVOID_FORWARD_BACK  6
     #define AVOID_RECOVER       7
     
-    // ??????
-    const uint32_t OBSTACLE_DIST = 25000;   // 250mm
-    const int16_t AVOID_ANGLE = 45;         // ????
-    const uint16_t TURN_OUT_TIME = 80;      // ???????
-    const uint16_t FORWARD_OUT_TIME = 60;   // ??????
-    const uint16_t TURN_BACK_TIME = 80;     // ??????
-    const uint16_t FORWARD_BACK_TIME = 60;  // ??????
+    // 避障参数定义
+    const uint32_t OBSTACLE_DIST = 25000;       // 250mm 障碍物检测距离
+    const int16_t AVOID_ANGLE = 45;             // 避障转向角度
+    const uint16_t TURN_OUT_TIME = 80;          // 转出时间
+    const uint16_t FORWARD_OUT_TIME = 60;       // 前进绕行时间
+    const uint16_t TURN_BACK_TIME = 80;         // 转回时间
+    const uint16_t FORWARD_BACK_TIME = 60;      // 前进回归时间
     
     switch(g_avoid_ctrl.state) {
         case AVOID_IDLE:
-            // ?????
+            // 空闲状态：检测障碍物
             if (g_ultrawave_data[0].distance < OBSTACLE_DIST && 
                 g_ultrawave_data[0].distance > 100) {
-                // ??????
+                // 检测到障碍物，保存当前状态
                 g_avoid_ctrl.original_angle = g_CarCtrl.car_angle;
                 g_avoid_ctrl.original_speed[0] = g_CarCtrl.car_speed_set[0];
                 g_avoid_ctrl.original_speed[1] = g_CarCtrl.car_speed_set[1];
                 
-                // ??
+                // 停车
                 g_CarCtrl.car_speed_set[0] = 0;
                 g_CarCtrl.car_speed_set[1] = 0;
                 g_avoid_ctrl.state = AVOID_DETECTED;
                 g_avoid_ctrl.timer = 0;
                 
-                // ????
+                // 切换转向方向
                 g_avoid_ctrl.turn_direction *= -1;
             }
             break;
             
         case AVOID_DETECTED:
-            // ????
+            // 检测到障碍物：短暂停止
             if (++g_avoid_ctrl.timer > 10) {  // 100ms
                 g_avoid_ctrl.state = AVOID_BACKUP;
                 g_avoid_ctrl.timer = 0;
@@ -239,7 +155,7 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_BACKUP:
-            // ????
+            // 后退阶段
             g_CarCtrl.car_angle = g_avoid_ctrl.original_angle;
             Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
             g_CarCtrl.car_speed_set[0] = -200;
@@ -252,10 +168,10 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_TURN_OUT:
-            // ?????(???)
+            // 转向避开阶段
             g_CarCtrl.car_angle = g_avoid_ctrl.original_angle + 
                                   (g_avoid_ctrl.turn_direction * AVOID_ANGLE);
-            // ??????
+            // 限制转向角度
             if (g_CarCtrl.car_angle > 45) g_CarCtrl.car_angle = 45;
             if (g_CarCtrl.car_angle < -45) g_CarCtrl.car_angle = -45;
             
@@ -270,7 +186,7 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_FORWARD_OUT:
-            // ??????
+            // 前进绕行阶段
             g_CarCtrl.car_speed_set[0] = 350;
             g_CarCtrl.car_speed_set[1] = 350;
             
@@ -281,10 +197,10 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_TURN_BACK:
-            // ????
+            // 转回原方向阶段
             g_CarCtrl.car_angle = g_avoid_ctrl.original_angle - 
                                   (g_avoid_ctrl.turn_direction * AVOID_ANGLE);
-            // ??????
+            // 限制转向角度
             if (g_CarCtrl.car_angle > 45) g_CarCtrl.car_angle = 45;
             if (g_CarCtrl.car_angle < -45) g_CarCtrl.car_angle = -45;
             
@@ -299,7 +215,7 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_FORWARD_BACK:
-            // ?????????
+            // 前进回归阶段
             g_CarCtrl.car_speed_set[0] = 350;
             g_CarCtrl.car_speed_set[1] = 350;
             
@@ -310,7 +226,7 @@ void CarCtrl_AvoidObstacle(void)
             break;
             
         case AVOID_RECOVER:
-            // ?????????
+            // 恢复原始状态阶段
             g_CarCtrl.car_angle = g_avoid_ctrl.original_angle;
             Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
             g_CarCtrl.car_speed_set[0] = g_avoid_ctrl.original_speed[0];
@@ -323,314 +239,394 @@ void CarCtrl_AvoidObstacle(void)
     }
 }
 
+/* ==================== 菜单控制功能实现 ==================== */
 
-
-/////////////////////////////////////////////////////////////////////////////////
-// Menu control
-//
-/////////////////////////////////////////////////////////////////////////////////
-void CarCtrl_Start( void )
+/**
+ * @brief 启动车辆控制
+ */
+void CarCtrl_Start(void)
 {
-	g_car_ctrl_state = CarCtrl_IDLE ;
+    g_car_ctrl_state = CarCtrl_IDLE;
 }
 
-void CarCtrl_Stop( void )
+/**
+ * @brief 停止车辆控制
+ */
+void CarCtrl_Stop(void)
 {
-	g_car_ctrl_state = CarCtrl_STOP ;
-	// Ctrl_Menu_Show();
+    g_car_ctrl_state = CarCtrl_STOP;
+    // Ctrl_Menu_Show();
 }
 
-void CarCtrl_SpeedUp( void )
+/**
+ * @brief 增加速度
+ */
+void CarCtrl_SpeedUp(void)
 {
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-		g_CarCtrl.car_speed_set[i] += 5 ;
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        g_CarCtrl.car_speed_set[i] += 5;
+    }
 }
 
-void CarCtrl_SpeedDown( void )
+/**
+ * @brief 减少速度
+ */
+void CarCtrl_SpeedDown(void)
 {
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-		g_CarCtrl.car_speed_set[i] -= 5 ;
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        g_CarCtrl.car_speed_set[i] -= 5;
+    }
 }
 
-void CarCtrl_SpeedStop( void )
+/**
+ * @brief 速度归零
+ */
+void CarCtrl_SpeedStop(void)
 {
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-		g_CarCtrl.car_speed_set[i] = 0 ;
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        g_CarCtrl.car_speed_set[i] = 0;
+    }
 }
 
-void CarCtrl_Forward( void )
+/**
+ * @brief 前进
+ */
+void CarCtrl_Forward(void)
 {
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-		g_CarCtrl.car_speed_set[i] = abs( g_CarCtrl.car_speed_set[i] );
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        g_CarCtrl.car_speed_set[i] = abs(g_CarCtrl.car_speed_set[i]);
+    }
 }
 
-void CarCtrl_Backward( void )
+/**
+ * @brief 后退
+ */
+void CarCtrl_Backward(void)
 {
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-		g_CarCtrl.car_speed_set[i] = -1*abs( g_CarCtrl.car_speed_set[i] );
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        g_CarCtrl.car_speed_set[i] = -1 * abs(g_CarCtrl.car_speed_set[i]);
+    }
 }
 
-void CarCtrl_Straight( void )
+/**
+ * @brief 直行
+ */
+void CarCtrl_Straight(void)
 {
-	g_CarCtrl.car_angle = CHA;
-	Steer_Moto_Ctrl( STEER_MOTO_POS , g_CarCtrl.car_angle );
+    g_CarCtrl.car_angle = CHA;
+    Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
 }
 
-void CarCtrl_Right( void )
+/**
+ * @brief 右转
+ */
+void CarCtrl_Right(void)
 {
-	g_CarCtrl.car_angle -= 1 ;
-	// if ( g_CarCtrl.car_angle < -45 ) g_CarCtrl.car_angle = -45 ;
-	if ( g_CarCtrl.car_angle < -90 ) g_CarCtrl.car_angle = -90 ;
-	Steer_Moto_Ctrl(STEER_MOTO_POS , g_CarCtrl.car_angle );
+    g_CarCtrl.car_angle -= 1;
+    // if (g_CarCtrl.car_angle < -45) g_CarCtrl.car_angle = -45;
+    if (g_CarCtrl.car_angle < -90) g_CarCtrl.car_angle = -90;
+    Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
 }
 
-void CarCtrl_Left( void )
+/**
+ * @brief 左转
+ */
+void CarCtrl_Left(void)
 {
-	g_CarCtrl.car_angle += 1 ;
-	// if ( g_CarCtrl.car_angle > 45 ) g_CarCtrl.car_angle = 45 ;
-	if ( g_CarCtrl.car_angle > 90 ) g_CarCtrl.car_angle = 90 ;
-	Steer_Moto_Ctrl(STEER_MOTO_POS , g_CarCtrl.car_angle );
+    g_CarCtrl.car_angle += 1;
+    // if (g_CarCtrl.car_angle > 45) g_CarCtrl.car_angle = 45;
+    if (g_CarCtrl.car_angle > 90) g_CarCtrl.car_angle = 90;
+    Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
 }
 
+/* ==================== 核心控制功能实现 ==================== */
 
-
-/////////////////////////////////////////////////////////////////////////////////
-
-void CarCtrl_Init( void )
+/**
+ * @brief 初始化车辆控制系统
+ */
+void CarCtrl_Init(void)
 {
-	car_config_t *p_car_cfg = & g_CarConfig ;
-	memset( &g_CarCtrl , 0
-	, sizeof(g_CarCtrl) );
-	g_CarPlan_Ptr = g_CarPlan_Base;
-		mission=0;
- 
+    car_config_t *p_car_cfg = &g_CarConfig;
+    memset(&g_CarCtrl, 0, sizeof(g_CarCtrl));
+    g_CarPlan_Ptr = g_CarPlan_Base;
+    mission = 0;
 }
 
-void CarCtrl_Speed_PID( )
+/**
+ * @brief 速度PID控制
+ * @details 实现电机速度的闭环控制
+ */
+void CarCtrl_Speed_PID(void)
 {
-	static int32_t last_speed[DRIVE_MOTO_NUM] = {0,0};
-	static int32_t speed_intergrade[DRIVE_MOTO_NUM] = {0,0};
-	int32_t speed_error[DRIVE_MOTO_NUM];
-	int32_t speed_diff[DRIVE_MOTO_NUM];
+    static int32_t last_speed[DRIVE_MOTO_NUM] = {0, 0};
+    static int32_t speed_intergrade[DRIVE_MOTO_NUM] = {0, 0};
+    int32_t speed_error[DRIVE_MOTO_NUM];
+    int32_t speed_diff[DRIVE_MOTO_NUM];
 
-	for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-	{
-		speed_error[i] = g_CarCtrl.car_speed_set[i] - g_speed_encoder[i].speed ;
-		speed_intergrade[i] = speed_intergrade[i] + speed_error[i] ; 
-		speed_diff[i] = last_speed[i] - g_speed_encoder[i].speed  ;
-		last_speed[i] = g_speed_encoder[i].speed ;		
-		g_CarCtrl.moto_drive[i] = speed_error[i]*g_CarConfig.speed_KP +
-															speed_intergrade[i] * g_CarConfig.speed_KI +
-															speed_diff[i] * g_CarConfig.speed_KD  ;
-		
-		//Drive_Moto_Ctrl( i , g_CarCtrl.moto_drive[i] );
-	}
-	
-	Drive_Moto_Ctrl( 0 , g_CarCtrl.moto_drive[0] );
-	Drive_Moto_Ctrl( 1 , -g_CarCtrl.moto_drive[1] );	
+    for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+        // 计算速度误差
+        speed_error[i] = g_CarCtrl.car_speed_set[i] - g_speed_encoder[i].speed;
+        
+        // 积分项累加
+        speed_intergrade[i] = speed_intergrade[i] + speed_error[i];
+        
+        // 计算微分项
+        speed_diff[i] = last_speed[i] - g_speed_encoder[i].speed;
+        last_speed[i] = g_speed_encoder[i].speed;
+        
+        // PID计算
+        g_CarCtrl.moto_drive[i] = speed_error[i] * g_CarConfig.speed_KP +
+                                  speed_intergrade[i] * g_CarConfig.speed_KI +
+                                  speed_diff[i] * g_CarConfig.speed_KD;
+        
+        // Drive_Moto_Ctrl(i, g_CarCtrl.moto_drive[i]);
+    }
+    
+    // 驱动电机（第二个电机反向）
+    Drive_Moto_Ctrl(0, g_CarCtrl.moto_drive[0]);
+    Drive_Moto_Ctrl(1, -g_CarCtrl.moto_drive[1]);
 }
 
-void CarCtrl_PlanSet( void )
+/**
+ * @brief 执行运行计划
+ * @details 根据预设的运行计划控制车辆
+ */
+void CarCtrl_PlanSet(void)
 {
-	car_plan_t* car_plan_ptr ;
-	
-	car_plan_ptr = g_CarPlan_Ptr+a ;
-	
-	if ( car_plan_ptr->run_time_set == 0 )
-	{
-		g_car_ctrl_state = CarCtrl_STOP;
-		Steer_Moto_Ctrl(STEER_MOTO_POS ,car_plan_ptr->car_angle_set);
-		for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-			Drive_Moto_Ctrl( i , 0);
-		memset( &g_CarCtrl , 0 , sizeof(g_CarCtrl) );
-		return ;
-	}
-	
-	if ( g_CarCtrl.run_time == 0 )  // load plan 
-	{
-		g_CarCtrl.run_time ++ ;
-		for( int32_t i = 0 ; i < DRIVE_MOTO_NUM ; i++)
-			g_CarCtrl.car_speed_set[i] = car_plan_ptr->car_speed_set[i] ;
-		Steer_Moto_Ctrl(STEER_MOTO_POS , car_plan_ptr->car_angle_set );		
-	}
-	else														// execute plan 
-	{
-		g_CarCtrl.run_time ++ ;
-		if (								// plan over
-			   g_ultrawave_data[0].distance < car_plan_ptr->front_distance_set&&g_ultrawave_data[0].distance >0)   // distance too close
-		{
-			//if(g_ultrawave_data[0].distance != -1){
-				g_CarCtrl.run_time = 0 ;
-				a=1;	
-     			
-			//}
-		}
-		if (g_CarCtrl.run_time == car_plan_ptr->run_time_set )   // distance too close
-		{
-			//if(g_ultrawave_data[0].distance != -1){
-				g_CarCtrl.run_time = 0 ;
-			if(a==1){
-			b++;
-			}
-			if((a==12)&&(b!=0)){
-			b--;
-				
-			}else{
-			a++;
-			}
-						
-			//}
-		}
-		
-		
-	}
+    car_plan_t* car_plan_ptr;
+    
+    car_plan_ptr = g_CarPlan_Ptr + a;
+    
+    // 检查是否到达计划终点
+    if (car_plan_ptr->run_time_set == 0) {
+        g_car_ctrl_state = CarCtrl_STOP;
+        Steer_Moto_Ctrl(STEER_MOTO_POS, car_plan_ptr->car_angle_set);
+        for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+            Drive_Moto_Ctrl(i, 0);
+        }
+        memset(&g_CarCtrl, 0, sizeof(g_CarCtrl));
+        return;
+    }
+    
+    // 加载新计划
+    if (g_CarCtrl.run_time == 0) {
+        g_CarCtrl.run_time++;
+        for (int32_t i = 0; i < DRIVE_MOTO_NUM; i++) {
+            g_CarCtrl.car_speed_set[i] = car_plan_ptr->car_speed_set[i];
+        }
+        Steer_Moto_Ctrl(STEER_MOTO_POS, car_plan_ptr->car_angle_set);
+    }
+    // 执行当前计划
+    else {
+        g_CarCtrl.run_time++;
+        
+        // 检查前方障碍物距离
+        if (g_ultrawave_data[0].distance < car_plan_ptr->front_distance_set && 
+            g_ultrawave_data[0].distance > 0) {
+            // if(g_ultrawave_data[0].distance != -1){
+                g_CarCtrl.run_time = 0;
+                a = 1;
+            // }
+        }
+        
+        // 检查运行时间是否到达
+        if (g_CarCtrl.run_time == car_plan_ptr->run_time_set) {
+            // if(g_ultrawave_data[0].distance != -1){
+                g_CarCtrl.run_time = 0;
+                if (a == 1) {
+                    b++;
+                }
+                if ((a == 12) && (b != 0)) {
+                    b--;
+                } else {
+                    a++;
+                }
+            // }
+        }
+    }
 }
 
-
-void CarCtrl_Show( void ) 
+/**
+ * @brief 显示车辆状态信息
+ * @details 在OLED显示屏上显示运行状态
+ */
+void CarCtrl_Show(void)
 {
-	static uint8_t  index = 0 ;
-	static int32_t  speed[DRIVE_MOTO_NUM] = { 0 , 0 } ;
-	static int32_t  pwm[DRIVE_MOTO_NUM] = { 0 , 0 } ;
-	uint8_t 				buf[17];
-	
-	for (int i = 0 ; i < DRIVE_MOTO_NUM ; i++) 
-	{	
-		speed[i] += g_speed_encoder[ i ].speed ;
-		pwm[i] += g_CarCtrl.moto_drive[ i ] ;
-	}
-	
-	if ( index < 9 ) 
-	{
-		index++;
-	}
-	else
-	{
-		index = 0 ;
-		speed[0] = speed[0] / 10 ;
-		speed[1] = speed[1] / 10 ;
-		pwm[0] = pwm[0] / 10 ;
-		pwm[1] = pwm[1] / 10 ;
-	
-		
-		 sprintf( buf , "%d" ,mission);
-		OLED_ShowAscii( 0,0, buf , 16 ,0 );
-		sprintf( buf , "%d" , g_ultrawave_data[0].distance);
-		OLED_ShowAscii( 1,0, buf , 16 ,0 );
-
-		speed[0] = 0 ;
-		speed[1] = 0 ;		
-		pwm[0] = 0 ;
-		pwm[1] = 0 ;
-	}
+    static uint8_t index = 0;
+    static int32_t speed[DRIVE_MOTO_NUM] = {0, 0};
+    static int32_t pwm[DRIVE_MOTO_NUM] = {0, 0};
+    uint8_t buf[17];
+    
+    // 累加速度和PWM值用于计算平均值
+    for (int i = 0; i < DRIVE_MOTO_NUM; i++) {
+        speed[i] += g_speed_encoder[i].speed;
+        pwm[i] += g_CarCtrl.moto_drive[i];
+    }
+    
+    // 每10次更新一次显示
+    if (index < 9) {
+        index++;
+    } else {
+        index = 0;
+        speed[0] = speed[0] / 10;
+        speed[1] = speed[1] / 10;
+        pwm[0] = pwm[0] / 10;
+        pwm[1] = pwm[1] / 10;
+        
+        // 显示任务编号
+        sprintf(buf, "%d", mission);
+        OLED_ShowAscii(0, 0, buf, 16, 0);
+        
+        // 显示超声波距离
+        sprintf(buf, "%d", g_ultrawave_data[0].distance);
+        OLED_ShowAscii(1, 0, buf, 16, 0);
+        
+        // 重置累加值
+        speed[0] = 0;
+        speed[1] = 0;
+        pwm[0] = 0;
+        pwm[1] = 0;
+    }
 }
 
-void CarCtrl_Process( void )
+/**
+ * @brief 车辆控制主处理函数
+ * @details 在定时器中断中周期调用
+ */
+void CarCtrl_Process(void)
 {
-	if ( g_car_ctrl_state == CarCtrl_STOP ) return ;
-	if ( g_car_ctrl_state == CarCtrl_START ) 
-	{
-		g_car_ctrl_state = CarCtrl_IDLE ;
-		Speed_Calculate();
-		CarCtrl_Speed_PID();
-	 CarCtrl_Show();
-		
-		CarCtrl_PlanSet();
-	}
+    if (g_car_ctrl_state == CarCtrl_STOP) {
+        return;
+    }
+    
+    if (g_car_ctrl_state == CarCtrl_START) {
+        g_car_ctrl_state = CarCtrl_IDLE;
+        Speed_Calculate();
+        CarCtrl_Speed_PID();
+        CarCtrl_Show();
+        CarCtrl_PlanSet();
+    }
 }
 
-// ? car_control.c ?????????
-car_plan_t g_CarPlan_Mission1[] = 
-{
-	{ CHA, { 2000, 2000} , 0 , 120 } ,  	// run 2s with 500mm/s speed straightly 1mǰΪ��
-	{ CHA+75,{520 , 1350} , 0 , 160 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA, { 2000 , 2000} , 0 , 70} ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {550 , 1350} , 0 , 90 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-25, { 2000, 2000} , 0 ,0 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA  , { 0   , 0  } , 0 , 0 }	,	// stop
+/* ==================== 任务定义 ==================== */
+
+/**
+ * @brief 任务1运行计划
+ * @note 基础方形路径
+ */
+car_plan_t g_CarPlan_Mission1[] = {
+    { CHA,       { 2000, 2000 }, 0, 120 },
+    { CHA + 75,  { 520,  1350 }, 0, 160 },
+    { CHA,       { 2000, 2000 }, 0, 70  },
+    { CHA + 75,  { 550,  1350 }, 0, 90  },
+    { CHA - 25,  { 2000, 2000 }, 0, 0   },
+    { CHA,       { 0,    0    }, 0, 0   }
 };
 
-car_plan_t g_CarPlan_Mission2[] = 
-{
-	{ CHA  , {1000 , 1000} , 40000 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{ CHA-75, {500 , 500} , 0 , 100 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA+75, {500 , 500} , 0 , 200 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-50, {250 , 250} , 0 , 100 } ,  	// run 2s with 500mm/s speed straightly 1m
-	{ CHA-50  , {500 , 500} , 0,70 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{ CHA  , {1000 , 1000} , 0 , 100 } ,  	// run 20s with 50mm/s speed straightly or block less than 200mm
-	{CHA , { 0   , 0  } , 0 , 0 }
+/**
+ * @brief 任务2运行计划
+ * @note 带避障的路径
+ */
+car_plan_t g_CarPlan_Mission2[] = {
+    { CHA,       { 1000, 1000 }, 40000, 100 },
+    { CHA - 75,  { 500,  500  }, 0,     100 },
+    { CHA + 75,  { 500,  500  }, 0,     200 },
+    { CHA - 50,  { 250,  250  }, 0,     100 },
+    { CHA - 50,  { 500,  500  }, 0,     70  },
+    { CHA,       { 1000, 1000 }, 0,     100 },
+    { CHA,       { 0,    0    }, 0,     0   }
 };
 
-car_plan_t g_CarPlan_Mission3[] = 
-{
-	{ CHA  , {400 ,400} , 40000, 1000 } ,  	//0 run 20s with 50mm/s speed straightly or block less than 200mm
-	  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {600 , -500} , 0 , 180} ,  	//1run 2s with 500mm/s speed straightly 1m   1  ת��
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {200 , 200} ,  30000 , 200 } ,  	//2 run 2s with 500mm/s speed straightly 1m 2ת�����
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {-500 , 600} ,  0, 140 } ,  	// 3run 2s with 500mm/s speed straightly 1m    3��ת���
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA  , {500 ,500} , 30000, 150 } ,                                              // 4 ��ȫֱִ��
-		  {CHA , { 0   , 0  } , 0 , 100 } ,	
-
-	{ CHA, {-500 , 600} ,  0, 140 } ,  	// 3run 2s with 500mm/s speed straightly 1m    3��ת���
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA  , {200 ,200} , 30000, 140 } ,                                               // 6 ��ת��ִ��
-		  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-	{ CHA, {600 , -500} , 0 , 180} ,                                                  //7 ת��λ
-	  {CHA , { 0   , 0  } , 0 , 50 } ,	
-
-		{ CHA  , {200 ,200} , 30000, 200 } ,//       
-
-
-  {CHA , { 0   , 0  } , 0 , 0 } ,	
+/**
+ * @brief 任务3运行计划
+ * @note 复杂路径与避障
+ */
+car_plan_t g_CarPlan_Mission3[] = {
+    // 第一阶段：检测障碍物
+    { CHA,       { 400,  400  }, 40000, 1000 },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第二阶段：第一次转弯
+    { CHA,       { 600,  -500 }, 0,     180  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第三阶段：慢速前进检测
+    { CHA,       { 200,  200  }, 30000, 200  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第四阶段：左转避障
+    { CHA,       { -500, 600  }, 0,     140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第五阶段：快速直行
+    { CHA,       { 500,  500  }, 30000, 150  },
+    { CHA,       { 0,    0    }, 0,     100  },
+    
+    // 第六阶段：再次左转
+    { CHA,       { -500, 600  }, 0,     140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第七阶段：慢速前进
+    { CHA,       { 200,  200  }, 30000, 140  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第八阶段：右转复位
+    { CHA,       { 600,  -500 }, 0,     180  },
+    { CHA,       { 0,    0    }, 0,     50   },
+    
+    // 最后阶段：前进并停止
+    { CHA,       { 200,  200  }, 30000, 200  },
+    { CHA,       { 0,    0    }, 0,     0    }
 };
 
-// ????????
+/* ==================== 任务启动函数 ==================== */
+
+/**
+ * @brief 启动任务1
+ * @details 基础运行任务
+ */
 void CarCtrl_Mission1(void)
 {
-		CarCtrl_Init( );
-		g_CarPlan_Ptr = g_CarPlan_Mission1;
-	mission	= 1;
-		g_car_ctrl_state = CarCtrl_IDLE ;
+    CarCtrl_Init();
+    g_CarPlan_Ptr = g_CarPlan_Mission1;
+    mission = 1;
+    g_car_ctrl_state = CarCtrl_IDLE;
     
     // OLED_clear();
     // OLED_ShowAscii(0, 0, "Mission 1", 16, 0);
     // HAL_Delay(1000);
 }
 
+/**
+ * @brief 启动任务2
+ * @details 避障运行任务
+ */
 void CarCtrl_Mission2(void)
 {
-		CarCtrl_Init(  );
-	  g_CarPlan_Ptr = g_CarPlan_Mission2;
-		
-	mission=2;
+    CarCtrl_Init();
+    g_CarPlan_Ptr = g_CarPlan_Mission2;
+    mission = 2;
     // g_CarCtrl.run_step = 0;
     // g_CarCtrl.run_time = 0;
-    g_car_ctrl_state = CarCtrl_IDLE ;
-
+    g_car_ctrl_state = CarCtrl_IDLE;
     
     // OLED_clear();
     // OLED_ShowAscii(0, 0, "Mission 2", 16, 0);
     // HAL_Delay(1000);
 }
 
+/**
+ * @brief 启动任务3
+ * @details 复杂路径避障任务
+ */
 void CarCtrl_Mission3(void)
 {
-		CarCtrl_Init( );
+    CarCtrl_Init();
     g_CarPlan_Ptr = g_CarPlan_Mission3;
-	mission=3;
+    mission = 3;
     // g_CarCtrl.run_step = 0;
     // g_CarCtrl.run_time = 0;
-    g_car_ctrl_state = CarCtrl_IDLE ;
-
+    g_car_ctrl_state = CarCtrl_IDLE;
     
     // OLED_clear();
     // OLED_ShowAscii(0, 0, "Mission 3", 16, 0);
