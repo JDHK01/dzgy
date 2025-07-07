@@ -12,7 +12,7 @@
 #include "ctrl_menu.h"
 
 /* ==================== 宏定义 ==================== */
-#define CHA         +11
+#define CHA         -11
 
 /* ==================== 全局变量定义 ==================== */
 int mission = 0;
@@ -30,7 +30,6 @@ car_config_t g_CarConfig = {
 
 car_ctrl_t g_CarCtrl;
 car_plan_t* g_CarPlan_Ptr;
-
 /* ==================== 运行计划数组定义 ==================== */
 
 /**
@@ -38,11 +37,12 @@ car_plan_t* g_CarPlan_Ptr;
  * @note 用于基本的方形路径行驶
  */
 car_plan_t g_CarPlan_Base[] = {
-    { CHA - 8,   { 2000, 2000 }, 0, 120 },     // 直行 1.2 秒
-    { CHA + 75,  { 480,  1350 }, 0, 148 },     // 右转
-    { CHA,       { 2000, 2000 }, 0, 90  },     // 直行 0.9 秒
-    { CHA + 75,  { 480,  1350 }, 0, 80  },     // 右转
-    { CHA,       { 0,    0    }, 0, 0   }      // 停止
+	{ CHA ,   { 0,0  }, 20000, 1000 },     // 直行 1.2 秒
+    // { CHA - 8,   { 2000, 2000 }, 0, 120 },     // 直行 1.2 秒
+    // { CHA + 75,  { 480,  1350 }, 0, 148 },     // 右转
+    // { CHA,       { 2000, 2000 }, 0, 90  },     // 直行 0.9 秒
+    // { CHA + 75,  { 480,  1350 }, 0, 80  },     // 右转
+    // { CHA,       { 0,    0    }, 0, 0   }      // 停止
 };
 
 /**
@@ -323,8 +323,8 @@ void CarCtrl_Straight(void)
 void CarCtrl_Right(void)
 {
     g_CarCtrl.car_angle -= 1;
-    // if (g_CarCtrl.car_angle < -45) g_CarCtrl.car_angle = -45;
-    if (g_CarCtrl.car_angle < -90) g_CarCtrl.car_angle = -90;
+    if (g_CarCtrl.car_angle < -45) g_CarCtrl.car_angle = -45;
+    // if (g_CarCtrl.car_angle < -90) g_CarCtrl.car_angle = -90;
     Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
 }
 
@@ -334,8 +334,8 @@ void CarCtrl_Right(void)
 void CarCtrl_Left(void)
 {
     g_CarCtrl.car_angle += 1;
-    // if (g_CarCtrl.car_angle > 45) g_CarCtrl.car_angle = 45;
-    if (g_CarCtrl.car_angle > 90) g_CarCtrl.car_angle = 90;
+     if (g_CarCtrl.car_angle > 45) g_CarCtrl.car_angle = 45;
+    // if (g_CarCtrl.car_angle > 90) g_CarCtrl.car_angle = 90;
     Steer_Moto_Ctrl(STEER_MOTO_POS, g_CarCtrl.car_angle);
 }
 
@@ -349,6 +349,7 @@ void CarCtrl_Init(void)
     car_config_t *p_car_cfg = &g_CarConfig;
     memset(&g_CarCtrl, 0, sizeof(g_CarCtrl));
     g_CarPlan_Ptr = g_CarPlan_Base;
+	CarCtrl_Straight();
     mission = 0;
 }
 
@@ -579,6 +580,77 @@ car_plan_t g_CarPlan_Mission3[] = {
     { CHA,       { 0,    0    }, 0,     0    }
 };
 
+/* ==================== 任务定义 ==================== */
+
+/**
+ * @brief 任务1运行计划
+ * @note 基础方形路径
+ */
+car_plan_t g_CarPlan_Mission1_div[] = {
+    { -CHA,       { 2000, 2000 }, 0, 120 },
+    { -CHA - 75,  { 520,  1350 }, 0, 160 },
+    { -CHA,       { 2000, 2000 }, 0, 70  },
+    { -CHA - 75,  { 550,  1350 }, 0, 90  },
+    { -CHA + 25,  { 2000, 2000 }, 0, 0   },
+    { -CHA,       { 0,    0    }, 0, 0   }
+};
+
+/**
+ * @brief 任务2运行计划
+ * @note 带避障的路径
+ */
+car_plan_t g_CarPlan_Mission2_div[] = {
+    { -CHA,       { 1000, 1000 }, 40000, 100 },
+    { -CHA + 75,  { 500,  500  }, 0,     100 },
+    { -CHA - 75,  { 500,  500  }, 0,     200 },
+    { -CHA + 50,  { 250,  250  }, 0,     100 },
+    { -CHA + 50,  { 500,  500  }, 0,     70  },
+    { -CHA,       { 1000, 1000 }, 0,     100 },
+    { -CHA,       { 0,    0    }, 0,     0   }
+};
+
+/**
+ * @brief 任务3运行计划
+ * @note 复杂路径与避障
+ */
+car_plan_t g_CarPlan_Mission3_div[] = {
+    // 第一阶段：检测障碍物
+    { -CHA,       { 400,  400  }, 40000, 1000 },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第二阶段：第一次转弯
+    { -CHA,       { 600,  -500 }, 0,     180  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第三阶段：慢速前进检测
+    { -CHA,       { 200,  200  }, 30000, 200  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第四阶段：左转避障
+    { -CHA,       { -500, 600  }, 0,     140  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第五阶段：快速直行
+    { -CHA,       { 500,  500  }, 30000, 150  },
+    { -CHA,       { 0,    0    }, 0,     100  },
+    
+    // 第六阶段：再次左转
+    { -CHA,       { -500, 600  }, 0,     140  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第七阶段：慢速前进
+    { -CHA,       { 200,  200  }, 30000, 140  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 第八阶段：右转复位
+    { -CHA,       { 600,  -500 }, 0,     180  },
+    { -CHA,       { 0,    0    }, 0,     50   },
+    
+    // 最后阶段：前进并停止
+    { -CHA,       { 200,  200  }, 30000, 200  },
+    { -CHA,       { 0,    0    }, 0,     0    }
+};
+
 /* ==================== 任务启动函数 ==================== */
 
 /**
@@ -623,6 +695,59 @@ void CarCtrl_Mission3(void)
 {
     CarCtrl_Init();
     g_CarPlan_Ptr = g_CarPlan_Mission3;
+    mission = 3;
+    // g_CarCtrl.run_step = 0;
+    // g_CarCtrl.run_time = 0;
+    g_car_ctrl_state = CarCtrl_IDLE;
+    
+    // OLED_clear();
+    // OLED_ShowAscii(0, 0, "Mission 3", 16, 0);
+    // OLED_ShowAscii(1, 0, "Avoid ON", 16, 0);
+    // HAL_Delay(1000);
+}
+/* ==================== 任务启动函数，反向版本 ==================== */
+/**
+ * @brief 启动任务1
+ * @details 基础运行任务
+ */
+void CarCtrl_Mission1_div(void)
+{
+    CarCtrl_Init();
+    g_CarPlan_Ptr = g_CarPlan_Mission1_div;
+    mission = 1;
+    g_car_ctrl_state = CarCtrl_IDLE;
+    
+    // OLED_clear();
+    // OLED_ShowAscii(0, 0, "Mission 1", 16, 0);
+    // HAL_Delay(1000);
+}
+
+/**
+ * @brief 启动任务2
+ * @details 避障运行任务
+ */
+void CarCtrl_Mission2_div(void)
+{
+    CarCtrl_Init();
+    g_CarPlan_Ptr = g_CarPlan_Mission2_div;
+    mission = 2;
+    // g_CarCtrl.run_step = 0;
+    // g_CarCtrl.run_time = 0;
+    g_car_ctrl_state = CarCtrl_IDLE;
+    
+    // OLED_clear();
+    // OLED_ShowAscii(0, 0, "Mission 2", 16, 0);
+    // HAL_Delay(1000);
+}
+
+/**
+ * @brief 启动任务3
+ * @details 复杂路径避障任务
+ */
+void CarCtrl_Mission3_div(void)
+{
+    CarCtrl_Init();
+    g_CarPlan_Ptr = g_CarPlan_Mission3_div;
     mission = 3;
     // g_CarCtrl.run_step = 0;
     // g_CarCtrl.run_time = 0;
